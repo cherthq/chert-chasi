@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { findLeadByChatId, findLeadByPhone, updateLead } from "@/lib/sheets";
+import {
+  findLeadByChatId,
+  findLeadByPhone,
+  updateLead,
+  appendMessageLog,
+} from "@/lib/sheets";
 import { getSettings } from "@/lib/settings";
 import { chatHistory, sendIntoChat, setTyping, react } from "@/lib/chert";
 import { generateReply } from "@/lib/openai";
@@ -108,6 +113,14 @@ async function handleEvent(eventRaw: Record<string, unknown>) {
     last_excerpt: text.slice(0, 240),
     error: "",
   });
+  if (text) {
+    await appendMessageLog(lead.rowIndex, {
+      ts: message.sent_at ?? now,
+      direction: "in",
+      message_id: inboundMessageId,
+      text,
+    });
+  }
 
   const settings = await getSettings();
   if (!settings.auto_reply) return;
@@ -172,7 +185,15 @@ async function handleEvent(eventRaw: Record<string, unknown>) {
   }
 
   try {
-    await sendIntoChat(chatId, reply, { test_lead: settings.test_mode });
+    const result = await sendIntoChat(chatId, reply, {
+      test_lead: settings.test_mode,
+    });
+    await appendMessageLog(lead.rowIndex, {
+      ts: new Date().toISOString(),
+      direction: "out",
+      message_id: result.message_id,
+      text: reply,
+    });
   } catch (e) {
     console.error("auto-reply send failed", e);
     await updateLead(lead.rowIndex, {

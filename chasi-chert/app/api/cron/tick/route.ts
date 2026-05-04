@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { readLeads, updateLead } from "@/lib/sheets";
+import { readLeads, updateLead, appendMessageLog } from "@/lib/sheets";
 import { getSettings, renderTemplate, setSetting } from "@/lib/settings";
 import { sendText, enrichContact } from "@/lib/chert";
 import { normalizePhone } from "@/lib/phone";
@@ -115,6 +115,12 @@ export async function sendOnePending(settings: {
       chat_id: result.chat_id,
       last_outbound_at: now,
       error: "",
+    });
+    await appendMessageLog(next.rowIndex, {
+      ts: now,
+      direction: "out",
+      message_id: result.message_id,
+      text: body,
     });
     await setSetting("last_global_send_at", now);
     return NextResponse.json({

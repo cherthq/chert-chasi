@@ -66,9 +66,34 @@ export type SendResult = {
   chat_id: string;
   message_id: string;
   lead_id: string;
+  convo_id?: string;
   phone_line_id?: string;
   status: string;
 };
+
+type RawSendResult = {
+  chat_id?: string;
+  message_id?: string;
+  lead_id?: string;
+  convo_id?: string;
+  phone_line_id?: string;
+  status?: string;
+};
+
+// Per Chert docs: chat_id, lead_id, and convo_id all refer to the same
+// conversation. /send returns lead_id+convo_id; /chats returns chat_id.
+// Normalize to always have chat_id populated.
+function normalize(r: RawSendResult): SendResult {
+  const chat_id = r.chat_id || r.lead_id || r.convo_id || "";
+  return {
+    chat_id,
+    message_id: r.message_id ?? "",
+    lead_id: r.lead_id ?? chat_id,
+    convo_id: r.convo_id,
+    phone_line_id: r.phone_line_id,
+    status: r.status ?? "",
+  };
+}
 
 export async function sendText(
   to: string,
@@ -77,7 +102,8 @@ export async function sendText(
 ): Promise<SendResult> {
   const body: Json = { phone: to, body: text };
   if (opts.test_lead) body.test_lead = true;
-  return call<SendResult>("POST", "/send", body);
+  const raw = await call<RawSendResult>("POST", "/send", body);
+  return normalize(raw);
 }
 
 export async function sendIntoChat(
@@ -89,11 +115,12 @@ export async function sendIntoChat(
     message: { parts: [{ type: "text", value: text }] },
   };
   if (opts.test_lead) body.test_lead = true;
-  return call<SendResult>(
+  const raw = await call<RawSendResult>(
     "POST",
     `/chats/${chatId}/messages`,
     body
   );
+  return normalize({ ...raw, chat_id: raw.chat_id ?? chatId });
 }
 
 export async function setTyping(

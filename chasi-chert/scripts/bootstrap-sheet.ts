@@ -21,6 +21,7 @@ const HEADERS = [
   "last_inbound_at",
   "last_excerpt",
   "error",
+  "messages",
 ];
 
 async function main() {
@@ -47,7 +48,7 @@ async function main() {
     requestBody: {
       valueInputOption: "RAW",
       data: [
-        { range: "Leads!A1:J1", values: [HEADERS] },
+        { range: "Leads!A1:K1", values: [HEADERS] },
         { range: "Settings!A1:B1", values: [["key", "value"]] },
       ],
     },

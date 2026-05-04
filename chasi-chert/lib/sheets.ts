@@ -25,7 +25,10 @@ const HEADERS = [
   "last_inbound_at",
   "last_excerpt",
   "error",
+  "messages",
 ] as const;
+
+const LAST_COL_LETTER = "K";
 
 export type LeadStatus =
   | "pending"
@@ -46,6 +49,7 @@ export type Lead = {
   last_inbound_at: string;
   last_excerpt: string;
   error: string;
+  messages: string;
 };
 
 function client(): sheets_v4.Sheets {
@@ -64,7 +68,9 @@ function colLetter(zeroIndexed: number): string {
 }
 
 function rowToLead(row: string[], rowIndex: number): Lead {
+  // Don't trim "messages" — newlines matter
   const get = (i: number) => (row[i] ?? "").toString().trim();
+  const getRaw = (i: number) => (row[i] ?? "").toString();
   return {
     rowIndex,
     name: get(0),
@@ -77,6 +83,7 @@ function rowToLead(row: string[], rowIndex: number): Lead {
     last_inbound_at: get(7),
     last_excerpt: get(8),
     error: get(9),
+    messages: getRaw(10),
   };
 }
 
@@ -84,7 +91,7 @@ export async function readLeads(): Promise<Lead[]> {
   const sheets = client();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: requireSheetId(),
-    range: `${LEADS_TAB}!A2:J`,
+    range: `${LEADS_TAB}!A2:${LAST_COL_LETTER}`,
   });
   const rows = res.data.values ?? [];
   return rows.map((row, i) => rowToLead(row as string[], i + 2));
@@ -175,6 +182,59 @@ export async function writeSetting(key: string, value: string): Promise<void> {
   }
 }
 
+export type LoggedMessage = {
+  ts: string; // ISO
+  direction: "in" | "out";
+  text: string;
+  message_id?: string;
+};
+
+export function parseMessageLog(raw: string): LoggedMessage[] {
+  if (!raw) return [];
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line): LoggedMessage | null => {
+      // Format: "ISO|direction|message_id|text..."
+      const parts = line.split("|");
+      if (parts.length < 4) return null;
+      const [ts, direction, message_id, ...rest] = parts;
+      return {
+        ts,
+        direction: direction === "out" ? "out" : "in",
+        message_id: message_id || undefined,
+        text: rest.join("|"),
+      };
+    })
+    .filter((x): x is LoggedMessage => x !== null);
+}
+
+function formatLogLine(m: LoggedMessage): string {
+  const safe = m.text.replace(/[\r\n]+/g, " ");
+  return [m.ts, m.direction, m.message_id ?? "", safe].join("|");
+}
+
+export async function appendMessageLog(
+  rowIndex: number,
+  m: LoggedMessage
+): Promise<void> {
+  const sheets = client();
+  const colRange = `${LEADS_TAB}!K${rowIndex}`;
+  const cur = await sheets.spreadsheets.values.get({
+    spreadsheetId: requireSheetId(),
+    range: colRange,
+  });
+  const existing = cur.data.values?.[0]?.[0] ?? "";
+  const next = existing ? `${existing}\n${formatLogLine(m)}` : formatLogLine(m);
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: requireSheetId(),
+    range: colRange,
+    valueInputOption: "RAW",
+    requestBody: { values: [[next]] },
+  });
+}
+
 export async function ensureLayout(): Promise<void> {
   const sheets = client();
   const meta = await sheets.spreadsheets.get({
@@ -196,7 +256,7 @@ export async function ensureLayout(): Promise<void> {
   }
   await sheets.spreadsheets.values.update({
     spreadsheetId: requireSheetId(),
-    range: `${LEADS_TAB}!A1:J1`,
+    range: `${LEADS_TAB}!A1:${LAST_COL_LETTER}1`,
     valueInputOption: "RAW",
     requestBody: { values: [HEADERS as unknown as string[]] },
   });
