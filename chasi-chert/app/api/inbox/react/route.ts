@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { env } from "@/lib/env";
 import { react } from "@/lib/chert";
 
 export const runtime = "nodejs";
@@ -15,8 +14,6 @@ const REACTIONS = new Set([
 ]);
 
 export async function POST(req: NextRequest) {
-  if ((req.headers.get("authorization") ?? "") !== `Bearer ${env.ADMIN_SECRET}`)
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as {
     message_id?: string;
     reaction?: string;

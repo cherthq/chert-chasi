@@ -8,7 +8,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  if (!checkAdmin(req)) return unauthorized();
   const body = (await req.json().catch(() => ({}))) as {
     webhook_url?: string;
   };
@@ -42,13 +41,4 @@ export async function POST(req: NextRequest) {
     webhook: { url: webhookUrl, subscription },
     phone_numbers,
   });
-}
-
-function checkAdmin(req: NextRequest): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  return auth === `Bearer ${env.ADMIN_SECRET}`;
-}
-
-function unauthorized() {
-  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }

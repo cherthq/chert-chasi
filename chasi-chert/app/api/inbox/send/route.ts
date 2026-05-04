@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { env } from "@/lib/env";
 import { sendIntoChat, setTyping } from "@/lib/chert";
 import { appendMessageLog, findLeadByChatId } from "@/lib/sheets";
 import { getSettings } from "@/lib/settings";
@@ -8,8 +7,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  if ((req.headers.get("authorization") ?? "") !== `Bearer ${env.ADMIN_SECRET}`)
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as {
     chat_id?: string;
     text?: string;

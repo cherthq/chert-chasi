@@ -38,8 +38,6 @@ type ChertMessage = {
 
 type Tab = "controls" | "leads" | "inbox";
 
-const SECRET_KEY = "chasi-chert:admin";
-
 const REACTIONS: Array<{
   key: "love" | "like" | "dislike" | "laugh" | "emphasize" | "question";
   emoji: string;
@@ -53,43 +51,25 @@ const REACTIONS: Array<{
   { key: "question", emoji: "❓", label: "?" },
 ];
 
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
 export default function Dashboard() {
-  const [secret, setSecret] = useState("");
-  const [authed, setAuthed] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("controls");
 
-  useEffect(() => {
-    const s = localStorage.getItem(SECRET_KEY);
-    if (s) {
-      setSecret(s);
-      setAuthed(true);
-    }
-  }, []);
-
-  const headers = useCallback(
-    () => ({
-      Authorization: `Bearer ${secret}`,
-      "Content-Type": "application/json",
-    }),
-    [secret]
-  );
-
   const refresh = useCallback(async () => {
     setBusy(true);
     setMsg(null);
     try {
       const [s, l] = await Promise.all([
-        fetch("/api/settings", { headers: headers() }).then((r) => r.json()),
-        fetch("/api/leads", { headers: headers() }).then((r) => r.json()),
+        fetch("/api/settings").then((r) => r.json()),
+        fetch("/api/leads").then((r) => r.json()),
       ]);
       if (s.error) {
         setMsg(s.error);
-        setAuthed(false);
-        localStorage.removeItem(SECRET_KEY);
         return;
       }
       setSettings(s);
@@ -99,11 +79,11 @@ export default function Dashboard() {
     } finally {
       setBusy(false);
     }
-  }, [headers]);
+  }, []);
 
   useEffect(() => {
-    if (authed) void refresh();
-  }, [authed, refresh]);
+    void refresh();
+  }, [refresh]);
 
   async function saveSettings(patch: Partial<Settings>) {
     setBusy(true);
@@ -111,7 +91,7 @@ export default function Dashboard() {
     try {
       const r = await fetch("/api/settings", {
         method: "PUT",
-        headers: headers(),
+        headers: JSON_HEADERS,
         body: JSON.stringify(patch),
       });
       const s = await r.json();
@@ -132,10 +112,7 @@ export default function Dashboard() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await fetch("/api/admin/send-now", {
-        method: "POST",
-        headers: headers(),
-      });
+      const r = await fetch("/api/admin/send-now", { method: "POST" });
       const j = await r.json();
       setMsg(JSON.stringify(j));
       await refresh();
@@ -152,7 +129,7 @@ export default function Dashboard() {
     try {
       const r = await fetch("/api/admin/setup", {
         method: "POST",
-        headers: headers(),
+        headers: JSON_HEADERS,
         body: JSON.stringify({}),
       });
       const j = await r.json();
@@ -164,46 +141,9 @@ export default function Dashboard() {
     }
   }
 
-  if (!authed) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-zinc-50">
-        <form
-          className="w-full max-w-sm bg-white rounded-2xl border p-6 shadow-sm space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            localStorage.setItem(SECRET_KEY, secret);
-            setAuthed(true);
-          }}
-        >
-          <h1 className="text-xl font-semibold">chasi-chert</h1>
-          <p className="text-sm text-zinc-500">enter the admin secret</p>
-          <input
-            type="password"
-            className="w-full border rounded-lg px-3 py-2"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder="ADMIN_SECRET"
-            autoFocus
-          />
-          <button className="w-full bg-black text-white rounded-lg py-2 font-medium">
-            unlock
-          </button>
-        </form>
-      </main>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-zinc-50 flex">
-      <Sidebar
-        tab={tab}
-        setTab={setTab}
-        onSignOut={() => {
-          localStorage.removeItem(SECRET_KEY);
-          setAuthed(false);
-          setSecret("");
-        }}
-      />
+      <Sidebar tab={tab} setTab={setTab} />
 
       <main className="flex-1 min-w-0 flex flex-col">
         <header className="flex items-center justify-between px-6 py-3 border-b bg-white">
@@ -238,7 +178,7 @@ export default function Dashboard() {
           )}
           {tab === "leads" && <LeadsView leads={leads} />}
           {tab === "inbox" && (
-            <InboxView leads={leads} headers={headers} onRefresh={refresh} />
+            <InboxView leads={leads} onRefresh={refresh} />
           )}
         </div>
       </main>
@@ -249,11 +189,9 @@ export default function Dashboard() {
 function Sidebar({
   tab,
   setTab,
-  onSignOut,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
-  onSignOut: () => void;
 }) {
   const items: { key: Tab; label: string; icon: string }[] = [
     { key: "controls", label: "Controls", icon: "⚙︎" },
@@ -282,12 +220,6 @@ function Sidebar({
           </button>
         ))}
       </nav>
-      <button
-        onClick={onSignOut}
-        className="m-2 px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-100 rounded-md text-left"
-      >
-        sign out
-      </button>
     </aside>
   );
 }
@@ -469,11 +401,9 @@ function LeadsTable({ leads }: { leads: Lead[] }) {
 
 function InboxView({
   leads,
-  headers,
   onRefresh,
 }: {
   leads: Lead[];
-  headers: () => Record<string, string>;
   onRefresh: () => void;
 }) {
   const conversations = useMemo(
@@ -510,7 +440,6 @@ function InboxView({
           <ConversationPane
             key={current.chat_id}
             lead={current}
-            headers={headers}
             onSent={onRefresh}
           />
         ) : (
@@ -574,11 +503,9 @@ function ConversationsRail({
 
 function ConversationPane({
   lead,
-  headers,
   onSent,
 }: {
   lead: Lead;
-  headers: () => Record<string, string>;
   onSent: () => void;
 }) {
   const [messages, setMessages] = useState<ChertMessage[]>([]);
@@ -594,8 +521,7 @@ function ConversationPane({
     setError(null);
     try {
       const r = await fetch(
-        `/api/inbox/messages?chat_id=${encodeURIComponent(lead.chat_id)}`,
-        { headers: headers() }
+        `/api/inbox/messages?chat_id=${encodeURIComponent(lead.chat_id)}`
       );
       const j = await r.json();
       if (!r.ok) {
@@ -612,7 +538,7 @@ function ConversationPane({
     } finally {
       setLoading(false);
     }
-  }, [lead.chat_id, headers]);
+  }, [lead.chat_id]);
 
   useEffect(() => {
     void loadMessages();
@@ -631,7 +557,7 @@ function ConversationPane({
     try {
       const r = await fetch("/api/inbox/send", {
         method: "POST",
-        headers: headers(),
+        headers: JSON_HEADERS,
         body: JSON.stringify({ chat_id: lead.chat_id, text }),
       });
       const j = await r.json();
@@ -652,7 +578,7 @@ function ConversationPane({
     try {
       await fetch("/api/inbox/react", {
         method: "POST",
-        headers: headers(),
+        headers: JSON_HEADERS,
         body: JSON.stringify({ message_id: messageId, reaction }),
       });
     } catch (e) {

@@ -92,9 +92,6 @@ export const env = {
   get CRON_SECRET() {
     return opt("CRON_SECRET");
   },
-  get ADMIN_SECRET() {
-    return need("ADMIN_SECRET");
-  },
   get APP_URL() {
     return (
       opt("APP_URL") ??
